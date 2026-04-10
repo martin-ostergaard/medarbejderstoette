@@ -1,0 +1,460 @@
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { toast } from "sonner";
+import { Upload, CheckCircle, Heart } from "lucide-react";
+
+interface FormData {
+  email: string;
+  email_confirm: string;
+  first_name: string;
+  last_name: string;
+  address: string;
+  postal_code: string;
+  city: string;
+  cpr_number: string;
+  seniority: string;
+  employment_status: string;
+  company: string;
+  department: string;
+  position: string;
+  support_for_relative: string;
+  relative_name: string;
+  relative_cpr: string;
+  relative_address: string;
+  relation: string;
+  criteria: string;
+  reason: string;
+  amount: string;
+  timeline: string;
+  timeline_date: string;
+  bank_name: string;
+  bank_reg_number: string;
+  bank_account_number: string;
+  remarks: string;
+}
+
+const initialForm: FormData = {
+  email: "", email_confirm: "", first_name: "", last_name: "",
+  address: "", postal_code: "", city: "", cpr_number: "",
+  seniority: "", employment_status: "", company: "", department: "", position: "",
+  support_for_relative: "", relative_name: "", relative_cpr: "", relative_address: "", relation: "",
+  criteria: "", reason: "", amount: "", timeline: "", timeline_date: "",
+  bank_name: "", bank_reg_number: "", bank_account_number: "", remarks: "",
+};
+
+export default function ApplicationForm() {
+  const [form, setForm] = useState<FormData>(initialForm);
+  const [files, setFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const set = (name: keyof FormData, value: string) =>
+    setForm((prev) => ({ ...prev, [name]: value }));
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    set(e.target.name as keyof FormData, e.target.value);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) setFiles(Array.from(e.target.files));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!form.first_name.trim() || !form.last_name.trim() || !form.email.trim() || !form.address.trim() || !form.postal_code.trim() || !form.city.trim() || !form.cpr_number.trim()) {
+      toast.error("Udfyld venligst alle påkrævede felter under personlige oplysninger");
+      return;
+    }
+    if (form.email !== form.email_confirm) {
+      toast.error("E-mail adresserne stemmer ikke overens");
+      return;
+    }
+    if (!form.reason.trim() || !form.amount) {
+      toast.error("Udfyld venligst årsag og beløb");
+      return;
+    }
+    const amount = parseFloat(form.amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Angiv venligst et gyldigt beløb");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const appId = crypto.randomUUID();
+      const { error: appError } = await supabase.from("applications").insert({
+        id: appId,
+        applicant_name: `${form.first_name.trim()} ${form.last_name.trim()}`,
+        applicant_email: form.email.trim(),
+        applicant_address: form.address.trim(),
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        postal_code: form.postal_code.trim(),
+        city: form.city.trim(),
+        cpr_number: form.cpr_number.trim(),
+        seniority: form.seniority || null,
+        employment_status: form.employment_status || null,
+        company: form.company.trim() || null,
+        department: form.department.trim() || null,
+        position: form.position.trim() || null,
+        support_for_relative: form.support_for_relative === "ja",
+        relative_name: form.relative_name.trim() || null,
+        relative_cpr: form.relative_cpr.trim() || null,
+        relative_address: form.relative_address.trim() || null,
+        relation: form.relation || null,
+        criteria: form.criteria || null,
+        reason: form.reason.trim(),
+        amount,
+        timeline: form.timeline || null,
+        timeline_date: form.timeline === "angiv_tidspunkt" ? form.timeline_date.trim() || null : null,
+        bank_name: form.bank_name.trim() || null,
+        bank_reg_number: form.bank_reg_number.trim() || null,
+        bank_account_number: form.bank_account_number.trim() || null,
+        remarks: form.remarks.trim() || null,
+      });
+
+      if (appError) throw appError;
+
+      for (const file of files) {
+        const filePath = `${appId}/${crypto.randomUUID()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage.from("application-documents").upload(filePath, file);
+        if (uploadError) { console.error("Upload error:", uploadError); continue; }
+        await supabase.from("application_documents").insert({
+          application_id: appId, file_name: file.name, file_path: filePath, file_size: file.size, file_type: file.type,
+        });
+      }
+
+      setSubmitted(true);
+    } catch (err) {
+      console.error(err);
+      toast.error("Der opstod en fejl. Prøv venligst igen.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-lg w-full text-center animate-fade-in">
+          <CardContent className="pt-10 pb-10 space-y-4">
+            <div className="mx-auto w-16 h-16 bg-success/10 rounded-full flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-success" />
+            </div>
+            <h2 className="text-2xl font-display text-foreground">Tak for din ansøgning!</h2>
+            <p className="text-muted-foreground">
+              Din ansøgning er modtaget. Du vil modtage en bekræftelse på e-mail.
+              Vi behandler din ansøgning hurtigst muligt.
+            </p>
+            <Button onClick={() => { setSubmitted(false); setForm(initialForm); setFiles([]); }}>
+              Indsend ny ansøgning
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-card">
+        <div className="container max-w-3xl py-8">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Heart className="w-5 h-5 text-primary" />
+            </div>
+            <h1 className="text-3xl font-display text-foreground">Ansøgning til medarbejderstøtteordning</h1>
+          </div>
+          <p className="text-muted-foreground ml-13">
+            Udfyld formularen herunder. Alle felter markeret med * er påkrævede.
+          </p>
+        </div>
+      </header>
+
+      <main className="container max-w-3xl py-8">
+        <form onSubmit={handleSubmit} className="space-y-8">
+
+          {/* Personlige oplysninger */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Personlige oplysninger</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">E-mail *</Label>
+                  <Input id="email" name="email" type="email" value={form.email} onChange={handleChange} placeholder="din@email.dk" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email_confirm">Bekræft e-mail *</Label>
+                  <Input id="email_confirm" name="email_confirm" type="email" value={form.email_confirm} onChange={handleChange} placeholder="din@email.dk" required />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="first_name">Fornavn *</Label>
+                  <Input id="first_name" name="first_name" value={form.first_name} onChange={handleChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Efternavn *</Label>
+                  <Input id="last_name" name="last_name" value={form.last_name} onChange={handleChange} required />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="address">Adresse *</Label>
+                <Input id="address" name="address" value={form.address} onChange={handleChange} required />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="postal_code">Postnr. *</Label>
+                  <Input id="postal_code" name="postal_code" value={form.postal_code} onChange={handleChange} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="city">By *</Label>
+                  <Input id="city" name="city" value={form.city} onChange={handleChange} required />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cpr_number">CPR-nr. *</Label>
+                <Input id="cpr_number" name="cpr_number" value={form.cpr_number} onChange={handleChange} placeholder="DDMMÅÅ-XXXX" required />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Anciennitet & ansættelse */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Ansættelsesforhold</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <Label>Anciennitet</Label>
+                <RadioGroup value={form.seniority} onValueChange={(v) => set("seniority", v)}>
+                  {["5 - 9 år", "10 - 14 år", "15 - 19 år", "20 - 24 år", "25 år eller længere"].map((opt) => (
+                    <div key={opt} className="flex items-center space-x-2">
+                      <RadioGroupItem value={opt} id={`seniority-${opt}`} />
+                      <Label htmlFor={`seniority-${opt}`} className="font-normal cursor-pointer">{opt}</Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+              <div className="space-y-3">
+                <Label>Ansættelsesstatus</Label>
+                <RadioGroup value={form.employment_status} onValueChange={(v) => set("employment_status", v)}>
+                  {["Nuværende medarbejder", "Fratrådt medarbejder"].map((opt) => (
+                    <div key={opt} className="flex items-center space-x-2">
+                      <RadioGroupItem value={opt} id={`emp-${opt}`} />
+                      <Label htmlFor={`emp-${opt}`} className="font-normal cursor-pointer">{opt}</Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="company">Firma</Label>
+                  <Input id="company" name="company" value={form.company} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="department">Afdeling</Label>
+                  <Input id="department" name="department" value={form.department} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="position">Stilling</Label>
+                  <Input id="position" name="position" value={form.position} onChange={handleChange} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pårørende */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Pårørende</CardTitle>
+              <CardDescription>Søges der om støtte til en pårørende? Hvis ja, udfyldes oplysninger om pårørende.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <RadioGroup value={form.support_for_relative} onValueChange={(v) => set("support_for_relative", v)}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="ja" id="rel-ja" />
+                  <Label htmlFor="rel-ja" className="font-normal cursor-pointer">Ja</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="nej" id="rel-nej" />
+                  <Label htmlFor="rel-nej" className="font-normal cursor-pointer">Nej</Label>
+                </div>
+              </RadioGroup>
+
+              {form.support_for_relative === "ja" && (
+                <div className="space-y-4 border-l-2 border-primary/20 pl-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="relative_name">Pårørendes navn</Label>
+                    <Input id="relative_name" name="relative_name" value={form.relative_name} onChange={handleChange} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="relative_cpr">Pårørendes CPR-nr.</Label>
+                    <Input id="relative_cpr" name="relative_cpr" value={form.relative_cpr} onChange={handleChange} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="relative_address">Pårørendes adresse (hvis forskellig fra egen)</Label>
+                    <Input id="relative_address" name="relative_address" value={form.relative_address} onChange={handleChange} />
+                  </div>
+                  <div className="space-y-3">
+                    <Label>Relation</Label>
+                    <RadioGroup value={form.relation} onValueChange={(v) => set("relation", v)}>
+                      {[
+                        "Egne børn over 18 år",
+                        "Ægtefælle",
+                        "Samlever, hvor samlivsforholdet har en fast karakter og har bestået i minimum 10 år",
+                        "Bonusbørn over 18 år, hvor medarbejderens ægteskab/samlivsforhold med barnets forælder har en fast karakter og har bestået i minimum 10 år",
+                      ].map((opt) => (
+                        <div key={opt} className="flex items-start space-x-2">
+                          <RadioGroupItem value={opt} id={`rel-${opt.slice(0, 10)}`} className="mt-1" />
+                          <Label htmlFor={`rel-${opt.slice(0, 10)}`} className="font-normal cursor-pointer leading-relaxed">{opt}</Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Kriterier */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Kriterier</CardTitle>
+              <CardDescription>Vælg det kriterie der bedst beskriver din situation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RadioGroup value={form.criteria} onValueChange={(v) => set("criteria", v)} className="space-y-4">
+                {[
+                  "Du eller dine nære pårørende er ramt af alvorlige økonomiske vanskeligheder, der ikke kan overvindes af dig eller af din husstand inden for de nærmeste år, og som ved modtagelsen af en økonomisk støtte helt eller delvist vil kunne genoprette en almindelig rimelig velfærd, afværge alvorligt velfærdstab eller opnå en varig forbedring af din og din families livsvilkår.",
+                  "Du eller dine nære pårørende behøver økonomisk støtte til diagnosticering, lægefaglig eller terapeutisk behandling - herunder afvænning for alkohol- eller andet misbrug – genoptræning, rekreationsophold eller (gen)anskaffelse af medicin, hjælpemidler, invalidebil o. lignende samt ombygning af hjem m.v. som følge af handicap.",
+                  "Du eller dine nære pårørende får ved modtagelse af økonomisk støtte mulighed for at gennemføre en uddannelse i Danmark eller i udlandet, som dine egne eller din families økonomiske forhold ellers vil gøre det umuligt eller urimeligt svært at gennemføre.",
+                ].map((opt, i) => (
+                  <div key={i} className="flex items-start space-x-2">
+                    <RadioGroupItem value={`kriterie_${i + 1}`} id={`krit-${i}`} className="mt-1" />
+                    <Label htmlFor={`krit-${i}`} className="font-normal cursor-pointer leading-relaxed text-sm">{opt}</Label>
+                  </div>
+                ))}
+              </RadioGroup>
+              <p className="text-xs text-muted-foreground mt-4">
+                *Ved nære pårørende forstås egne børn, ægtefælle, samlever, hvor samlivsforholdet har en fast karakter og har bestået i minimum 10 år samt bonusbørn, hvor medarbejderens ægteskab/samlivsforhold med barnets forælder har en fast karakter og har bestået i minimum 10 år.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Ansøgning */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Ansøgning</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reason">Beskriv situationen og baggrunden for ønsket om støtte *</Label>
+                <Textarea id="reason" name="reason" value={form.reason} onChange={handleChange} rows={5} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="amount">Beløb der søges om (DKK) *</Label>
+                <Input id="amount" name="amount" type="number" min="1" step="0.01" value={form.amount} onChange={handleChange} required />
+                <p className="text-xs text-muted-foreground">
+                  Beløbet vil for nuværende medarbejdere blive indberettet som A-indkomst og nettobeløbet udbetalt. For alle øvrige indberettes beløbet som B-indkomst.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <Label>Tidsramme</Label>
+                <RadioGroup value={form.timeline} onValueChange={(v) => set("timeline", v)}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="hurtigst_muligt" id="tl-hurtigst" />
+                    <Label htmlFor="tl-hurtigst" className="font-normal cursor-pointer">Hurtigst muligt</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="angiv_tidspunkt" id="tl-angiv" />
+                    <Label htmlFor="tl-angiv" className="font-normal cursor-pointer">Angiv tidspunkt</Label>
+                  </div>
+                </RadioGroup>
+                {form.timeline === "angiv_tidspunkt" && (
+                  <Input name="timeline_date" value={form.timeline_date} onChange={handleChange} placeholder="Angiv ønsket tidspunkt" />
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bankoplysninger */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Bankoplysninger</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="bank_name">Bank</Label>
+                <Input id="bank_name" name="bank_name" value={form.bank_name} onChange={handleChange} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bank_reg_number">Reg. nr.</Label>
+                  <Input id="bank_reg_number" name="bank_reg_number" value={form.bank_reg_number} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bank_account_number">Kontonr.</Label>
+                  <Input id="bank_account_number" name="bank_account_number" value={form.bank_account_number} onChange={handleChange} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bemærkninger */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Bemærkninger</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Textarea name="remarks" value={form.remarks} onChange={handleChange} placeholder="Eventuelle bemærkninger..." rows={4} />
+            </CardContent>
+          </Card>
+
+          {/* Dokumenter */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-display text-xl">Dokumenter</CardTitle>
+              <CardDescription>Vedhæft relevante dokumenter til din ansøgning (budget, kvitteringer osv.)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
+                <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                <Label htmlFor="files" className="cursor-pointer">
+                  <span className="text-primary font-medium">Vælg filer</span>
+                  <span className="text-muted-foreground"> eller træk dem hertil</span>
+                </Label>
+                <Input id="files" type="file" multiple onChange={handleFileChange} className="hidden" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls" />
+                <p className="text-sm text-muted-foreground mt-2">PDF, Word, Excel eller billeder (maks. 20 MB pr. fil)</p>
+              </div>
+              {files.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {files.map((file, i) => (
+                    <div key={i} className="flex items-center justify-between bg-muted rounded-md px-3 py-2 text-sm">
+                      <span className="truncate">{file.name}</span>
+                      <span className="text-muted-foreground ml-2 shrink-0">{(file.size / 1024).toFixed(0)} KB</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button type="submit" size="lg" disabled={submitting}>
+              {submitting ? "Indsender..." : "Indsend ansøgning"}
+            </Button>
+          </div>
+        </form>
+      </main>
+    </div>
+  );
+}
